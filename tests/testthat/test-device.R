@@ -11,7 +11,9 @@ test_that("fonts are embedded and subset", {
   expect_gt(grepRaw("/FontFile2", raw, fixed = TRUE), 0)
   expect_gt(grepRaw("/Identity-H", raw, fixed = TRUE), 0)
   expect_gt(grepRaw("beginbfchar", raw, fixed = TRUE), 0)  # ToUnicode CMap
-  expect_gt(grepRaw("+Helvetica", raw, fixed = TRUE), 0)   # subset tag
+  # Embedded font carries a 6-letter subset tag before its (platform-
+  # dependent) PostScript name
+  expect_gt(grepRaw("[A-Z]{6}\\+", raw), 0)
   # Subsetting keeps a one-font document small
   expect_lt(file.size(file), 100 * 1024)
 })

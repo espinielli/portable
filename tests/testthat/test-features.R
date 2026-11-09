@@ -13,6 +13,7 @@ render_grid <- function(code, ...) {
 raw_pdf <- function(file) readBin(file, "raw", file.size(file))
 
 test_that("dev.capabilities advertises the supported features", {
+  skip_if(getRversion() < "4.2.0")  # dev.capabilities() was added in R 4.2.0
   portable_pdf(tempfile(fileext = ".pdf"))
   on.exit(dev.off())
   cap <- dev.capabilities()

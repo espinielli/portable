@@ -794,9 +794,9 @@ bool PdfDoc::finish() {
       char buf[32];
       std::time_t t = std::time(nullptr);
       std::tm* tm = std::localtime(&t);
-      std::snprintf(buf, sizeof(buf), "D:%04d%02d%02d%02d%02d%02d",
-                    tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday,
-                    tm->tm_hour, tm->tm_min, tm->tm_sec);
+      // strftime over snprintf: gcc's -Wformat-truncation cannot prove the
+      // tm fields are small enough for fixed-width %04d formats
+      std::strftime(buf, sizeof(buf), "D:%Y%m%d%H%M%S", tm);
       return std::string(buf);
     };
     auto text_str = [](const std::string& utf8) -> std::string {
