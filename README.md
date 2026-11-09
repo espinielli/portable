@@ -5,6 +5,9 @@
 
 <!-- badges: start -->
 
+[![R-CMD-check](https://github.com/r-lib/portable/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/r-lib/portable/actions/workflows/R-CMD-check.yaml)
+[![Codecov test
+coverage](https://codecov.io/gh/r-lib/portable/graph/badge.svg)](https://app.codecov.io/gh/r-lib/portable)
 <!-- badges: end -->
 
 Portable is a modern PDF graphics device for R, created to supplement
@@ -52,5 +55,5 @@ dev.off()
 #>                 2
 
 file.size(temp_file)
-#> [1] 3994
+#> [1] 4047
 ```
