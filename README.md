@@ -7,45 +7,50 @@
 
 <!-- badges: end -->
 
-The goal of portable is to …
+Portable is a modern PDF graphics device for R, created to supplement
+the [ragg](https://ragg.r-lib.org) and
+[svglite](https://svglite.r-lib.org) graphics devices. As such, it is
+built on the same foundation, using the
+[systemfonts](https://systemfonts.r-lib.org) and
+[textshaping](https://github.com/r-lib/textshaping) font stack. In
+contrast to svglite, the purpose of portable outputs is to be, well,
+portable. As such it embeds fonts natively ensuring that the graphics is
+presented equivalently on any system.
+
+Like it’s graphics device cousins it intends to keep up to date with new
+capabilities in the R graphics engine to the extent that the PDF specs
+allow it. As an example:
+
+- It supports Porter-Duff blending operations even though these are not
+  present in the PDF spec because they can be recreated by various
+  combinations of alpha blending (except `"add"` and `"saturate"`). The
+  `grDevices::pdf()` device achieves this through rasterization which is
+  counter to the purpose of PDF.
+- It does not support luminance masking as this does not exist in the
+  PDF spec and cannot be achieved while retaining vector graphics.
 
 ## Installation
 
 You can install the development version of portable like so:
 
 ``` r
-# FILL THIS IN! HOW CAN PEOPLE INSTALL YOUR DEV PACKAGE?
+pak::pak("r-lib/portable")
 ```
 
 ## Example
 
-This is a basic example which shows you how to solve a common problem:
+portable exports a single function `portable_pdf()` which works like
+`pdf()` and opens a graphics device to plot to:
 
 ``` r
 library(portable)
-## basic example code
+temp_file <- tempfile(fileext = ".pdf")
+portable_pdf(temp_file)
+plot(1:10, 1:10)
+dev.off()
+#> quartz_off_screen 
+#>                 2
+
+file.size(temp_file)
+#> [1] 3994
 ```
-
-What is special about using `README.Rmd` instead of just `README.md`?
-You can include R chunks like so:
-
-``` r
-summary(cars)
-#>      speed           dist       
-#>  Min.   : 4.0   Min.   :  2.00  
-#>  1st Qu.:12.0   1st Qu.: 26.00  
-#>  Median :15.0   Median : 36.00  
-#>  Mean   :15.4   Mean   : 42.98  
-#>  3rd Qu.:19.0   3rd Qu.: 56.00  
-#>  Max.   :25.0   Max.   :120.00
-```
-
-You’ll still need to render `README.Rmd` regularly, to keep `README.md`
-up-to-date. `devtools::build_readme()` is handy for this.
-
-You can also embed plots, for example:
-
-<img src="man/figures/README-pressure-1.png" alt="" width="100%" />
-
-In that case, don’t forget to commit and push the resulting figure
-files, so they display on GitHub and CRAN.
