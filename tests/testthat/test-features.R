@@ -145,15 +145,32 @@ test_that("groups become transparency group form XObjects with blend modes", {
   expect_match(content, " Do\n", fixed = TRUE)
 })
 
-test_that("unsupported porter-duff operators warn", {
+test_that("porter-duff operators use alpha soft masks", {
+  skip_if(getRversion() < "4.2.0")
+  file <- render_grid(
+    grid::grid.group(
+      grid::circleGrob(x = 0.4, r = 0.2,
+                       gp = grid::gpar(fill = "red", col = NA)),
+      op = "xor",
+      dst = grid::circleGrob(x = 0.6, r = 0.2,
+                             gp = grid::gpar(fill = "green", col = NA)))
+  )
+  raw <- raw_pdf(file)
+  # Two inverted alpha masks for the xor recipe
+  expect_gt(grepRaw("/S /Alpha", raw, fixed = TRUE), 0)
+  expect_gt(grepRaw("/C0 [1] /C1 [0]", raw, fixed = TRUE), 0)
+  expect_gt(grepRaw("/I true", raw, fixed = TRUE), 0)
+})
+
+test_that("non-synthesizable compositing operators warn", {
   skip_if(getRversion() < "4.2.0")
   file <- tempfile(fileext = ".pdf")
   portable_pdf(file)
   grid::grid.newpage()
   expect_warning(
-    grid::grid.group(grid::circleGrob(r = 0.2), op = "in",
+    grid::grid.group(grid::circleGrob(r = 0.2), op = "add",
                      dst = grid::circleGrob(x = 0.6, r = 0.2)),
-    "Porter-Duff"
+    "not expressible"
   )
   dev.off()
 })
@@ -225,4 +242,67 @@ test_that("grid.glyph renders glyphs from an explicit font file", {
   content <- paste(pdf_streams(file), collapse = "\n")
   expect_match(content, " Tj\n", fixed = TRUE)
   expect_gt(grepRaw("/FontFile2", raw_pdf(file), fixed = TRUE), 0)
+})
+
+test_that("closing a device with no pages writes a valid one-page PDF", {
+  file <- tempfile(fileext = ".pdf")
+  portable_pdf(file)
+  dev.off()
+  raw <- raw_pdf(file)
+  expect_equal(rawToChar(raw[1:5]), "%PDF-")
+  expect_gt(grepRaw("/Type /Pages /Count 1 ", raw, fixed = TRUE), 0)
+})
+
+test_that("viewport clipping works with deviceClip enabled", {
+  skip_if(getRversion() < "4.2.0")
+  # Rotated viewport clips are a grid-level limitation on every device
+  expect_warning(
+    render_grid({
+      grid::pushViewport(grid::viewport(angle = 30, clip = TRUE))
+      grid::grid.rect(gp = grid::gpar(fill = "grey90"))
+      grid::popViewport()
+    }),
+    "cannot clip to rotated viewport"
+  )
+  # Ordinary rectangular viewport clips go straight to the device
+  file <- render_grid({
+    grid::pushViewport(grid::viewport(x = 0.25, width = 0.5, clip = TRUE))
+    grid::grid.rect(gp = grid::gpar(fill = "grey90"))
+    grid::popViewport()
+  })
+  content <- paste(pdf_streams(file), collapse = "\n")
+  expect_match(content, " re W n", fixed = TRUE)
+})
+
+test_that("dash patterns are adjusted for non-butt line caps", {
+  # lwd = 1 -> 0.75 pt; lty = "44" (dashed)
+  file <- render_pdf({
+    plot.new()
+    plot.window(c(0, 1), c(0, 1))
+    segments(0.1, 0.5, 0.9, 0.5, lty = "44", lend = "round")
+  })
+  content <- paste(pdf_streams(file), collapse = "\n")
+  # on segment shortened by 1 lwd, off lengthened by 1: [3 5] * 0.75
+  expect_match(content, "[2.25 3.75 ] 0 d", fixed = TRUE)
+
+  # Butt caps leave the pattern unadjusted
+  file <- render_pdf({
+    plot.new()
+    plot.window(c(0, 1), c(0, 1))
+    segments(0.1, 0.5, 0.9, 0.5, lty = "44", lend = "butt")
+  })
+  content <- paste(pdf_streams(file), collapse = "\n")
+  expect_match(content, "[3 3 ] 0 d", fixed = TRUE)
+})
+
+test_that("dotted lines with round caps become solid zero-length dashes", {
+  file <- render_pdf({
+    plot.new()
+    plot.window(c(0, 1), c(0, 1))
+    segments(0.1, 0.5, 0.9, 0.5, lty = "11", lend = "round")
+  })
+  content <- paste(pdf_streams(file), collapse = "\n")
+  # on segment clamped to zero length; round caps render it as dots
+  expect_match(content, "[0 1.5 ] 0 d", fixed = TRUE)
+  expect_match(content, "1 J", fixed = TRUE)
 })

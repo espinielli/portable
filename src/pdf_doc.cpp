@@ -318,7 +318,8 @@ std::string PdfDoc::endCapture() {
   return s;
 }
 
-std::string PdfDoc::addForm(const std::string& stream, bool gray_group) {
+std::string PdfDoc::addForm(const std::string& stream, bool gray_group,
+                            bool isolated) {
   int obj = newObject();
   std::ostringstream dict;
   // BBox is in form space, which is device units (points * scaling)
@@ -326,6 +327,7 @@ std::string PdfDoc::addForm(const std::string& stream, bool gray_group) {
        << pdf_num(page_width_pts * scale) << " "
        << pdf_num(page_height_pts * scale)
        << "] /Group << /S /Transparency /CS " << (gray_group ? "/DeviceGray" : "/DeviceRGB")
+       << (isolated ? " /I true" : "")
        << " >> /Resources @RESOURCES@";
   addStreamObject(obj, dict.str(), stream, true);
   std::string name = "Fm" + std::to_string(++form_counter);
@@ -519,11 +521,12 @@ std::string PdfDoc::addImage(int width, int height, const unsigned char* rgba,
 std::string PdfDoc::addGState(double stroke_alpha, double fill_alpha,
                               const std::string& blend,
                               const std::string& smask_form,
-                              bool smask_luminosity, bool clear_smask) {
+                              bool smask_luminosity, bool clear_smask,
+                              bool invert_smask) {
   std::ostringstream key;
   key << std::lround(stroke_alpha * 1000.0) << ","
       << std::lround(fill_alpha * 1000.0) << "," << blend << "," << smask_form
-      << "," << smask_luminosity << "," << clear_smask;
+      << "," << smask_luminosity << "," << clear_smask << "," << invert_smask;
   auto it = gstate_names.find(key.str());
   if (it != gstate_names.end()) return it->second;
 
@@ -540,7 +543,12 @@ std::string PdfDoc::addGState(double stroke_alpha, double fill_alpha,
     }
     if (form_obj > 0) {
       s << " /SMask << /S /" << (smask_luminosity ? "Luminosity" : "Alpha")
-        << " /G " << form_obj << " 0 R >>";
+        << " /G " << form_obj << " 0 R";
+      if (invert_smask) {
+        // Transfer function x -> 1 - x: yields the inverse mask ("out")
+        s << " /TR << /FunctionType 2 /Domain [0 1] /C0 [1] /C1 [0] /N 1 >>";
+      }
+      s << " >>";
     }
   } else if (clear_smask) {
     s << " /SMask /None";

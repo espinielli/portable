@@ -163,20 +163,32 @@ static SEXP portable_capabilities(SEXP cap) {
   SET_VECTOR_ELT(cap, R_GE_capability_masks, x);
   UNPROTECT(1);
 
-  // PDF blend modes plus plain "over" compositing
-  PROTECT(x = Rf_allocVector(INTSXP, 12));
-  INTEGER(x)[0] = R_GE_compositeOver;
-  INTEGER(x)[1] = R_GE_compositeMultiply;
-  INTEGER(x)[2] = R_GE_compositeScreen;
-  INTEGER(x)[3] = R_GE_compositeOverlay;
-  INTEGER(x)[4] = R_GE_compositeDarken;
-  INTEGER(x)[5] = R_GE_compositeLighten;
-  INTEGER(x)[6] = R_GE_compositeColorDodge;
-  INTEGER(x)[7] = R_GE_compositeColorBurn;
-  INTEGER(x)[8] = R_GE_compositeHardLight;
-  INTEGER(x)[9] = R_GE_compositeSoftLight;
-  INTEGER(x)[10] = R_GE_compositeDifference;
-  INTEGER(x)[11] = R_GE_compositeExclusion;
+  // PDF blend modes, "over", and the Porter-Duff operators that are
+  // synthesizable from alpha soft masks (all except add and saturate)
+  PROTECT(x = Rf_allocVector(INTSXP, 23));
+  INTEGER(x)[0] = R_GE_compositeClear;
+  INTEGER(x)[1] = R_GE_compositeSource;
+  INTEGER(x)[2] = R_GE_compositeOver;
+  INTEGER(x)[3] = R_GE_compositeIn;
+  INTEGER(x)[4] = R_GE_compositeOut;
+  INTEGER(x)[5] = R_GE_compositeAtop;
+  INTEGER(x)[6] = R_GE_compositeDest;
+  INTEGER(x)[7] = R_GE_compositeDestOver;
+  INTEGER(x)[8] = R_GE_compositeDestIn;
+  INTEGER(x)[9] = R_GE_compositeDestOut;
+  INTEGER(x)[10] = R_GE_compositeDestAtop;
+  INTEGER(x)[11] = R_GE_compositeXor;
+  INTEGER(x)[12] = R_GE_compositeMultiply;
+  INTEGER(x)[13] = R_GE_compositeScreen;
+  INTEGER(x)[14] = R_GE_compositeOverlay;
+  INTEGER(x)[15] = R_GE_compositeDarken;
+  INTEGER(x)[16] = R_GE_compositeLighten;
+  INTEGER(x)[17] = R_GE_compositeColorDodge;
+  INTEGER(x)[18] = R_GE_compositeColorBurn;
+  INTEGER(x)[19] = R_GE_compositeHardLight;
+  INTEGER(x)[20] = R_GE_compositeSoftLight;
+  INTEGER(x)[21] = R_GE_compositeDifference;
+  INTEGER(x)[22] = R_GE_compositeExclusion;
   SET_VECTOR_ELT(cap, R_GE_capability_compositing, x);
   UNPROTECT(1);
 
@@ -241,6 +253,10 @@ static pDevDesc portable_dev_new(PortablePdfDevice* dev, double pointsize,
   dd->haveCapture = 1;      // no
   dd->haveLocator = 1;      // no
   dd->canClip = TRUE;
+#if R_GE_version >= 14
+  // The device handles all clipping itself (rect and path based)
+  dd->deviceClip = TRUE;
+#endif
   dd->canGenMouseDown = FALSE;
   dd->canGenMouseMove = FALSE;
   dd->canGenMouseUp = FALSE;

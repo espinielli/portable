@@ -75,6 +75,7 @@ class PortablePdfDevice {
   std::string default_family;
   ColorModel colormodel;
   bool has_page = false;
+  bool ever_had_page = false;
 
   // Clip state: the current clip is the intersection of the rectangular clip
   // and (optionally) a clip path, both applied inside one saved gstate.

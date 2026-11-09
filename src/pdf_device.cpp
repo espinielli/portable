@@ -26,6 +26,7 @@ void PortablePdfDevice::newPage(unsigned int fill) {
   if (has_page) doc.endPage();
   doc.beginPage(page_width / (72.0 * scale), page_height / (72.0 * scale));
   has_page = true;
+  ever_had_page = true;
   clipped = false;
   path_clip_active = false;
   current_mask = -1;
@@ -41,6 +42,11 @@ void PortablePdfDevice::close() {
   if (has_page) {
     doc.endPage();
     has_page = false;
+  }
+  // A page-less PDF is rejected by some viewers; emit one blank page
+  if (!ever_had_page) {
+    doc.beginPage(page_width / (72.0 * scale), page_height / (72.0 * scale));
+    doc.endPage();
   }
   doc.finish();
 }
@@ -127,11 +133,38 @@ void PortablePdfDevice::setStroke(const pGEcontext gc) {
   if (gc->lty == 0 || blankLty(gc->lty)) {
     s << "[] 0 d\n";
   } else {
-    s << "[";
+    // Collect the lty nibbles (pen down/up lengths in units of lwd)
+    double nibbles[8];
+    int nlty = 0;
     for (int i = 0; i < 8 && (gc->lty >> (i * 4)) & 0xF; i++) {
-      s << pdf_num(((gc->lty >> (i * 4)) & 0xF) * lwd) << " ";
+      nibbles[nlty++] = (gc->lty >> (i * 4)) & 0xF;
     }
-    s << "] 0 d\n";
+    // PDF dashes are drawn including the line cap, so an "on" segment of
+    // nominal length L inks L + lwd with round/square caps. Adjust like the
+    // pdf()/ps() devices: shorten "on" segments and lengthen "off" segments
+    // by one lwd unless caps are butt, clamping at zero. The single-element
+    // "1" case is kept at 1 so dotted stays dotted with square caps.
+    double a = (gc->lend == GE_BUTT_CAP) ? 0.0 : 1.0;
+    double dash[8];
+    bool allzero = true;
+    for (int i = 0; i < nlty; i++) {
+      dash[i] = lwd * ((i % 2)
+                           ? (nibbles[i] + a)
+                           : ((nlty == 1 && nibbles[i] == 1.0) ? 1.0
+                                                               : nibbles[i] - a));
+      if (dash[i] < 0) dash[i] = 0;
+      if (dash[i] > 0.01) allzero = false;
+    }
+    // An all-zero dash array is a PDF error; solid + round caps gives dots
+    if (allzero) {
+      s << "[] 0 d\n";
+    } else {
+      s << "[";
+      for (int i = 0; i < nlty; i++) {
+        s << pdf_num(dash[i]) << " ";
+      }
+      s << "] 0 d\n";
+    }
   }
 
   int cap = 0;  // GE_BUTT_CAP
@@ -439,7 +472,9 @@ void PortablePdfDevice::text(double x, double y, const char* str, double rot,
   // Anchor adjustment needs the string advance
   double width = 0;
   if (hadj != 0) {
-    if (textshaping::string_width(str, font, size, 72.0, 0, &width) != 0) {
+    // Same width semantics as strWidth() (bearings included) so the anchor
+    // adjustment matches the engine's own justification
+    if (textshaping::string_width(str, font, size, 72.0, 1, &width) != 0) {
       width = 0;
     }
   }
@@ -824,49 +859,125 @@ static const char* blendModeName(int op) {
 
 SEXP PortablePdfDevice::defineGroup(SEXP src, int op, SEXP dst) {
 #if R_GE_version >= 15
+  std::string form;
   const char* bm = blendModeName(op);
-  if (bm == nullptr) {
+
+  if (bm != nullptr) {
+    // Plain "over" or a PDF blend mode: capture dst and src into one stream
+    doc.beginCapture();
+    std::ostringstream& s = doc.stream();
+    s << "q\n";
+    bool saved_clipped = clipped, saved_path_clip = path_clip_active;
+    double sx0 = clip_x0, sx1 = clip_x1, sy0 = clip_y0, sy1 = clip_y1;
+    int saved_mask = current_mask;
+    clipped = false;
+    path_clip_active = false;
+    current_mask = -1;
+
+    if (dst != R_NilValue) {
+      SEXP fcall = PROTECT(Rf_lang1(dst));
+      Rf_eval(fcall, R_GlobalEnv);
+      UNPROTECT(1);
+    }
+    if (std::string(bm) != "Normal") {
+      s << "/" << doc.addGState(1.0, 1.0, bm) << " gs\n";
+    }
+    {
+      SEXP fcall = PROTECT(Rf_lang1(src));
+      Rf_eval(fcall, R_GlobalEnv);
+      UNPROTECT(1);
+    }
+
+    s << "Q\n";
+    std::string captured = doc.endCapture();
+    clipped = saved_clipped;
+    path_clip_active = saved_path_clip;
+    clip_x0 = sx0;
+    clip_x1 = sx1;
+    clip_y0 = sy0;
+    clip_y1 = sy1;
+    current_mask = saved_mask;
+
+    form = doc.addForm(captured, false);
+  } else if (op == R_GE_compositeAdd || op == R_GE_compositeSaturate) {
     Rf_warning(
-        "Porter-Duff compositing operators other than 'over' are not "
-        "expressible in PDF; approximating with 'over'");
-    bm = "Normal";
-  }
+        "compositing operator is not expressible in PDF; "
+        "approximating with 'over'");
+    return defineGroup(src, R_GE_compositeOver, dst);
+  } else {
+    // Porter-Duff operators, synthesized from alpha soft masks (optionally
+    // inverted via a /TR transfer function), paint ordering, and selective
+    // painting of the destination. src and dst are captured as isolated
+    // forms so their standalone alpha can serve as a mask.
+    std::string formD, formS;
+    if (dst != R_NilValue) formD = doc.addForm(captureDrawing(dst), false, true);
+    formS = doc.addForm(captureDrawing(src), false, true);
 
-  doc.beginCapture();
-  std::ostringstream& s = doc.stream();
-  s << "q\n";
-  bool saved_clipped = clipped, saved_path_clip = path_clip_active;
-  double sx0 = clip_x0, sx1 = clip_x1, sy0 = clip_y0, sy1 = clip_y1;
-  int saved_mask = current_mask;
-  clipped = false;
-  path_clip_active = false;
-  current_mask = -1;
-
-  if (dst != R_NilValue) {
-    SEXP fcall = PROTECT(Rf_lang1(dst));
-    Rf_eval(fcall, R_GlobalEnv);
-    UNPROTECT(1);
+    std::ostringstream r;
+    auto paint_masked = [&](const std::string& what, const std::string& mask,
+                            bool invert) {
+      std::string gs = doc.addGState(1.0, 1.0, "", mask, false, false, invert);
+      r << "q\n/" << gs << " gs\n/" << what << " Do\nQ\n";
+    };
+    if (formD.empty()) {
+      // No destination: ops collapse to "src", nothing, or "dst" (nothing)
+      switch (op) {
+        case R_GE_compositeIn:
+        case R_GE_compositeAtop:
+        case R_GE_compositeDest:
+        case R_GE_compositeDestIn:
+        case R_GE_compositeDestOut:
+        case R_GE_compositeDestAtop:
+        case R_GE_compositeClear:
+          break;  // empty result
+        default:
+          r << "/" << formS << " Do\n";
+      }
+    } else {
+      switch (op) {
+        case R_GE_compositeClear:
+          break;
+        case R_GE_compositeSource:
+          r << "/" << formS << " Do\n";
+          break;
+        case R_GE_compositeDest:
+          r << "/" << formD << " Do\n";
+          break;
+        case R_GE_compositeIn:
+          paint_masked(formS, formD, false);
+          break;
+        case R_GE_compositeDestIn:
+          paint_masked(formD, formS, false);
+          break;
+        case R_GE_compositeOut:
+          paint_masked(formS, formD, true);
+          break;
+        case R_GE_compositeDestOut:
+          paint_masked(formD, formS, true);
+          break;
+        case R_GE_compositeAtop:
+          r << "/" << formD << " Do\n";
+          paint_masked(formS, formD, false);
+          break;
+        case R_GE_compositeDestAtop:
+          r << "/" << formS << " Do\n";
+          paint_masked(formD, formS, false);
+          break;
+        case R_GE_compositeXor:
+          paint_masked(formD, formS, true);
+          paint_masked(formS, formD, true);
+          break;
+        case R_GE_compositeDestOver:
+          r << "/" << formS << " Do\n";
+          r << "/" << formD << " Do\n";
+          break;
+        default:  // over reached via blendModeName; be safe
+          r << "/" << formD << " Do\n";
+          r << "/" << formS << " Do\n";
+      }
+    }
+    form = doc.addForm(r.str(), false);
   }
-  if (std::string(bm) != "Normal") {
-    s << "/" << doc.addGState(1.0, 1.0, bm) << " gs\n";
-  }
-  {
-    SEXP fcall = PROTECT(Rf_lang1(src));
-    Rf_eval(fcall, R_GlobalEnv);
-    UNPROTECT(1);
-  }
-
-  s << "Q\n";
-  std::string captured = doc.endCapture();
-  clipped = saved_clipped;
-  path_clip_active = saved_path_clip;
-  clip_x0 = sx0;
-  clip_x1 = sx1;
-  clip_y0 = sy0;
-  clip_y1 = sy1;
-  current_mask = saved_mask;
-
-  std::string form = doc.addForm(captured, false);
 
   int index = -1;
   for (size_t i = 0; i < groups.size(); i++) {

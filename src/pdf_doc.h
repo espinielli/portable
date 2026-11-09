@@ -74,8 +74,11 @@ class PdfDoc {
                        bool interpolate = false);
 
   // Form XObject over the full page (transparency group), for groups and
-  // soft masks. Returns the resource name.
-  std::string addForm(const std::string& stream, bool gray_group = false);
+  // soft masks. isolated requests /I true, so the group's alpha is computed
+  // without the backdrop (required for forms used as soft mask sources).
+  // Returns the resource name.
+  std::string addForm(const std::string& stream, bool gray_group = false,
+                      bool isolated = false);
 
   // Shading patterns. Stops and colors must have the same length. Returns
   // the pattern resource name; when any stop has alpha < 255, an alpha
@@ -100,7 +103,8 @@ class PdfDoc {
                         const std::string& blend = "",
                         const std::string& smask_form = "",
                         bool smask_luminosity = false,
-                        bool clear_smask = false);
+                        bool clear_smask = false,
+                        bool invert_smask = false);
 
   // Document metadata for the Info dictionary
   void setInfo(const std::string& title, const std::string& author,
