@@ -23,3 +23,5 @@ LinkingTo:
     systemfonts,
     textshaping
 SystemRequirements: zlib
+URL: https://github.com/r-lib/portable
+BugReports: https://github.com/r-lib/portable/issues
