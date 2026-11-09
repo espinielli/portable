@@ -22,7 +22,9 @@ class PortablePdfDevice {
   PortablePdfDevice(const std::string& file, double width, double height,
                     double scaling, const std::string& family,
                     const std::string& title, const std::string& author,
-                    ColorModel colormodel);
+                    const std::string& creator, const std::string& subject,
+                    const std::string& keywords,
+                    const std::string& creation_date, ColorModel colormodel);
   ~PortablePdfDevice() = default;
 
   void newPage(unsigned int fill);

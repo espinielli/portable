@@ -504,10 +504,15 @@ std::string PdfDoc::addTilingPattern(double x, double y, double width,
 }
 
 void PdfDoc::setInfo(const std::string& title, const std::string& author,
-                     const std::string& creator) {
+                     const std::string& creator, const std::string& subject,
+                     const std::string& keywords,
+                     const std::string& creation_date) {
   info_title = title;
   info_author = author;
   info_creator = creator;
+  info_subject = subject;
+  info_keywords = keywords;
+  info_creation_date = creation_date;
 }
 
 // PNG predictor (optimum, /Predictor 15): pick the per-row filter (None,
@@ -816,7 +821,11 @@ bool PdfDoc::finish() {
     if (!info_title.empty()) info << " /Title " << text_str(info_title);
     if (!info_author.empty()) info << " /Author " << text_str(info_author);
     if (!info_creator.empty()) info << " /Creator " << text_str(info_creator);
-    info << " /CreationDate (" << pdf_date() << ") >>";
+    if (!info_subject.empty()) info << " /Subject " << text_str(info_subject);
+    if (!info_keywords.empty()) info << " /Keywords " << text_str(info_keywords);
+    info << " /CreationDate ("
+         << (info_creation_date.empty() ? pdf_date() : info_creation_date)
+         << ") >>";
     objects[info_obj - 1] = info.str();
   }
 

@@ -111,8 +111,11 @@ class PdfDoc {
                         bool invert_smask = false);
 
   // Document metadata for the Info dictionary
+  // creation_date is a preformatted PDF date string; empty = use current time
   void setInfo(const std::string& title, const std::string& author,
-               const std::string& creator);
+               const std::string& creator, const std::string& subject = "",
+               const std::string& keywords = "",
+               const std::string& creation_date = "");
 
   double scaling() const { return scale; }
   double pageWidthPts() const { return page_width_pts; }
@@ -156,7 +159,8 @@ class PdfDoc {
   std::map<std::string, std::string> gstate_names;  // spec key -> name
   std::vector<std::pair<std::string, int>> gstate_objs;
 
-  std::string info_title, info_author, info_creator;
+  std::string info_title, info_author, info_creator, info_subject,
+      info_keywords, info_creation_date;
 
   // Gradient helper: stitching function over stops; returns object number
   int addStitchingFunction(const std::vector<double>& stops,

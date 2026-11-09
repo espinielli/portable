@@ -327,7 +327,8 @@ static pDevDesc portable_dev_new(PortablePdfDevice* dev, double pointsize,
 
 extern "C" SEXP portable_pdf_c(SEXP file, SEXP width, SEXP height,
                                SEXP scaling, SEXP pointsize, SEXP family,
-                               SEXP bg, SEXP title, SEXP author,
+                               SEXP bg, SEXP title, SEXP author, SEXP creator,
+                               SEXP subject, SEXP keywords, SEXP creation_date,
                                SEXP colormodel) {
   const char* filename = R_ExpandFileName(CHAR(STRING_ELT(file, 0)));
   double w = REAL(width)[0];
@@ -338,6 +339,10 @@ extern "C" SEXP portable_pdf_c(SEXP file, SEXP width, SEXP height,
   int* bg_rgba = INTEGER(bg);
   const char* ttl = CHAR(STRING_ELT(title, 0));
   const char* auth = CHAR(STRING_ELT(author, 0));
+  const char* crt = CHAR(STRING_ELT(creator, 0));
+  const char* sub = CHAR(STRING_ELT(subject, 0));
+  const char* kwd = CHAR(STRING_ELT(keywords, 0));
+  const char* cdt = CHAR(STRING_ELT(creation_date, 0));
   const char* cm = CHAR(STRING_ELT(colormodel, 0));
 
   if (w <= 0 || h <= 0) Rf_error("width and height must be positive");
@@ -348,7 +353,8 @@ extern "C" SEXP portable_pdf_c(SEXP file, SEXP width, SEXP height,
   if (std::strcmp(cm, "cmyk") == 0) model = ColorModel::kCMYK;
 
   PortablePdfDevice* dev =
-      new PortablePdfDevice(filename, w, h, sc, fam, ttl, auth, model);
+      new PortablePdfDevice(filename, w, h, sc, fam, ttl, auth, crt, sub, kwd,
+                            cdt, model);
   pDevDesc dd = portable_dev_new(dev, ps, sc, bg_rgba);
   if (dd == nullptr) {
     delete dev;
@@ -361,7 +367,7 @@ extern "C" SEXP portable_pdf_c(SEXP file, SEXP width, SEXP height,
 }
 
 static const R_CallMethodDef CallEntries[] = {
-    {"C_portable_pdf", (DL_FUNC)&portable_pdf_c, 10},
+    {"C_portable_pdf", (DL_FUNC)&portable_pdf_c, 14},
     {nullptr, nullptr, 0}};
 
 extern "C" void R_init_portable(DllInfo* dll) {

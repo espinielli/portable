@@ -12,6 +12,10 @@ PortablePdfDevice::PortablePdfDevice(const std::string& file, double width,
                                      const std::string& family,
                                      const std::string& title,
                                      const std::string& author,
+                                     const std::string& creator,
+                                     const std::string& subject,
+                                     const std::string& keywords,
+                                     const std::string& creation_date,
                                      ColorModel colormodel_)
     : doc(file, scaling),
       page_width(width * 72.0 * scaling),
@@ -19,7 +23,7 @@ PortablePdfDevice::PortablePdfDevice(const std::string& file, double width,
       scale(scaling > 0 ? scaling : 1.0),
       default_family(family),
       colormodel(colormodel_) {
-  doc.setInfo(title, author, "R graphics device (portable)");
+  doc.setInfo(title, author, creator, subject, keywords, creation_date);
 }
 
 void PortablePdfDevice::newPage(unsigned int fill) {

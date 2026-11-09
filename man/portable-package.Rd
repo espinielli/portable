@@ -6,7 +6,7 @@
 \alias{portable-package}
 \title{portable: A PDF Graphics Device with Embedded Fonts}
 \description{
-A PDF graphics device that uses systemfonts and textshaping for font lookup and text layout (the same font stack as the ragg devices) and embeds all used fonts so documents render identically everywhere.
+Provides a modern PDF graphics device that uses systemfonts and textshaping for font lookup and text layout (the same font stack as the ragg devices) and embeds all used fonts so documents render identically everywhere.
 }
 \seealso{
 Useful links:

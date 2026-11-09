@@ -14,10 +14,9 @@
 #' @param pointsize Default point size of text.
 #' @param family Default font family to use for text.
 #' @param bg Background colour of the device. Use `"transparent"` for no fill.
-#' @param title,author Title and author written to the PDF document metadata.
-#' @param colormodel Colour model for vector graphics output: `"rgb"` (the
-#'   default), `"gray"`, or `"cmyk"`. Embedded raster images are always stored
-#'   as RGB.
+#' @param metadata Document metadata, created with [pdf_metadata()].
+#' @param colormodel Colour model for output: `"rgb"` (the default), `"gray"`,
+#'   or `"cmyk"`. Applies to vector graphics and embedded raster images alike.
 #'
 #' @return Invisibly, the path to the created file.
 #'
@@ -29,7 +28,7 @@
 #' @export
 portable_pdf <- function(file = "portable.pdf", width = 7, height = 7,
                          scaling = 1, pointsize = 12, family = "sans",
-                         bg = "white", title = "", author = "",
+                         bg = "white", metadata = pdf_metadata(),
                          colormodel = c("rgb", "gray", "cmyk")) {
   colormodel <- arg_match(colormodel)
   check_string(file)
@@ -38,13 +37,18 @@ portable_pdf <- function(file = "portable.pdf", width = 7, height = 7,
   check_number_decimal(scaling, min = 0, allow_infinite = FALSE)
   check_number_decimal(pointsize, min = 0, allow_infinite = FALSE)
   check_string(family)
-  check_string(title)
-  check_string(author)
+  if (!inherits(metadata, "portable_pdf_metadata")) {
+    cli_abort(
+      "{.arg metadata} must be created with {.fn pdf_metadata}"
+    )
+  }
   file <- path.expand(file)
   bg_col <- grDevices::col2rgb(bg, alpha = TRUE)
   bg_rgba <- as.integer(bg_col[, 1])
   invisible(.Call("C_portable_pdf", file, as.double(width),
                   as.double(height), as.double(scaling), as.double(pointsize),
-                  family, bg_rgba, title, author, colormodel,
+                  family, bg_rgba, metadata$title, metadata$author,
+                  metadata$creator, metadata$subject, metadata$keywords,
+                  metadata$creation_date, colormodel,
                   PACKAGE = "portable"))
 }

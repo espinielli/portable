@@ -12,8 +12,7 @@ portable_pdf(
   pointsize = 12,
   family = "sans",
   bg = "white",
-  title = "",
-  author = "",
+  metadata = pdf_metadata(),
   colormodel = c("rgb", "gray", "cmyk")
 )
 }
@@ -33,11 +32,10 @@ relative to the physical page size.}
 
 \item{bg}{Background colour of the device. Use \code{"transparent"} for no fill.}
 
-\item{title, author}{Title and author written to the PDF document metadata.}
+\item{metadata}{Document metadata, created with \code{\link[=pdf_metadata]{pdf_metadata()}}.}
 
-\item{colormodel}{Colour model for vector graphics output: \code{"rgb"} (the
-default), \code{"gray"}, or \code{"cmyk"}. Embedded raster images are always stored
-as RGB.}
+\item{colormodel}{Colour model for output: \code{"rgb"} (the default), \code{"gray"},
+or \code{"cmyk"}. Applies to vector graphics and embedded raster images alike.}
 }
 \value{
 Invisibly, the path to the created file.

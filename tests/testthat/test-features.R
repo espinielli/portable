@@ -196,18 +196,33 @@ test_that("grid.path strokes and fills work", {
 })
 
 test_that("document metadata is written to the Info dictionary", {
-  file <- render_pdf(plot(1:10), title = "My title", author = "Jane")
+  file <- render_pdf(
+    plot(1:10),
+    metadata = pdf_metadata(title = "My title", author = "Jane",
+                            subject = "A plot", keywords = c("a", "b"),
+                            creation_date = .POSIXct(0, tz = "UTC"))
+  )
   raw <- raw_pdf(file)
   expect_gt(grepRaw("/Title (My title)", raw, fixed = TRUE), 0)
   expect_gt(grepRaw("/Author (Jane)", raw, fixed = TRUE), 0)
+  expect_gt(grepRaw("/Subject (A plot)", raw, fixed = TRUE), 0)
+  expect_gt(grepRaw("/Keywords (a, b)", raw, fixed = TRUE), 0)
+  expect_gt(grepRaw("/CreationDate (D:19700101000000Z)", raw, fixed = TRUE), 0)
   expect_gt(grepRaw("/Producer", raw, fixed = TRUE), 0)
   expect_gt(grepRaw("/Info ", raw, fixed = TRUE), 0)
 })
 
 test_that("special characters in metadata are escaped", {
-  file <- render_pdf(plot(1:10), title = "a (b) \\ c")
+  file <- render_pdf(plot(1:10),
+                     metadata = pdf_metadata(title = "a (b) \\ c"))
   raw <- raw_pdf(file)
   expect_gt(grepRaw("/Title (a \\(b\\) \\\\ c)", raw, fixed = TRUE), 0)
+})
+
+test_that("pdf_metadata validates its inputs", {
+  expect_s3_class(pdf_metadata(), "portable_pdf_metadata")
+  expect_error(pdf_metadata(creation_date = "yesterday"), "POSIXct")
+  expect_error(pdf_metadata(title = c("a", "b")))
 })
 
 test_that("ToUnicode CMaps with many glyphs use chunked bfchar blocks", {
