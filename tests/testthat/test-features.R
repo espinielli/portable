@@ -1,0 +1,228 @@
+# Tests for the modern graphics engine features: patterns/gradients,
+# clipping paths, masks, compositing groups, glyphs, and metadata.
+
+render_grid <- function(code, ...) {
+  file <- tempfile(fileext = ".pdf")
+  portable_pdf(file, ...)
+  grid::grid.newpage()
+  force(code)
+  dev.off()
+  file
+}
+
+raw_pdf <- function(file) readBin(file, "raw", file.size(file))
+
+test_that("dev.capabilities advertises the supported features", {
+  portable_pdf(tempfile(fileext = ".pdf"))
+  on.exit(dev.off())
+  cap <- dev.capabilities()
+  expect_true(is.character(cap$patterns))
+  expect_true(all(c("LinearGradient", "RadialGradient", "TilingPattern") %in%
+                  cap$patterns))
+  expect_true(cap$clippingPaths)
+  expect_equal(cap$masks, "alpha")
+  expect_true(all(c("over", "multiply", "screen") %in% cap$compositing))
+  expect_true(cap$transformations)
+  expect_true(cap$paths)
+  expect_true(cap$semiTransparency)
+})
+
+test_that("linear gradients become axial shading patterns", {
+  skip_if(getRversion() < "4.2.0")
+  file <- render_grid(
+    grid::grid.rect(gp = grid::gpar(
+      fill = grid::linearGradient(c("red", "blue"))))
+  )
+  raw <- raw_pdf(file)
+  expect_gt(grepRaw("/PatternType 2", raw, fixed = TRUE), 0)
+  expect_gt(grepRaw("/ShadingType 2", raw, fixed = TRUE), 0)
+  expect_gt(grepRaw("/FunctionType 2", raw, fixed = TRUE), 0)
+  content <- paste(pdf_streams(file), collapse = "\n")
+  expect_match(content, "/Pattern cs /P1 scn", fixed = TRUE)
+})
+
+test_that("radial gradients become radial shading patterns", {
+  skip_if(getRversion() < "4.2.0")
+  file <- render_grid(
+    grid::grid.circle(gp = grid::gpar(
+      fill = grid::radialGradient(c("yellow", "darkgreen"))))
+  )
+  raw <- raw_pdf(file)
+  expect_gt(grepRaw("/ShadingType 3", raw, fixed = TRUE), 0)
+})
+
+test_that("gradients with alpha get a luminosity soft mask", {
+  skip_if(getRversion() < "4.2.0")
+  file <- render_grid(
+    grid::grid.rect(gp = grid::gpar(
+      fill = grid::linearGradient(c("black", "transparent"))))
+  )
+  raw <- raw_pdf(file)
+  expect_gt(grepRaw("/S /Luminosity", raw, fixed = TRUE), 0)
+})
+
+test_that("multi-stop gradients use stitching functions", {
+  skip_if(getRversion() < "4.2.0")
+  file <- render_grid(
+    grid::grid.rect(gp = grid::gpar(
+      fill = grid::linearGradient(c("red", "white", "blue"))))
+  )
+  raw <- raw_pdf(file)
+  expect_gt(grepRaw("/FunctionType 3", raw, fixed = TRUE), 0)
+})
+
+test_that("tiling patterns become type 1 patterns", {
+  skip_if(getRversion() < "4.2.0")
+  file <- render_grid(
+    grid::grid.rect(gp = grid::gpar(
+      fill = grid::pattern(
+        grid::circleGrob(r = 0.02, gp = grid::gpar(fill = "black")),
+        width = grid::unit(5, "mm"), height = grid::unit(5, "mm"),
+        extend = "repeat")))
+  )
+  raw <- raw_pdf(file)
+  expect_gt(grepRaw("/PatternType 1", raw, fixed = TRUE), 0)
+  expect_gt(grepRaw("/TilingType 1", raw, fixed = TRUE), 0)
+  # 5mm = 14.17pt tile step
+  expect_gt(grepRaw("/XStep 14.17", raw, fixed = TRUE), 0)
+})
+
+test_that("clipping paths clip the output", {
+  skip_if(getRversion() < "4.2.0")
+  file <- render_grid({
+    grid::pushViewport(grid::viewport(clip = grid::circleGrob(r = 0.3)))
+    grid::grid.rect(gp = grid::gpar(fill = "grey90"))
+    grid::popViewport()
+  })
+  content <- paste(pdf_streams(file), collapse = "\n")
+  # Bezier circle path followed by a clip operator
+  expect_match(content, "c\nW n", fixed = TRUE)
+})
+
+test_that("alpha masks become soft mask gstates", {
+  skip_if(getRversion() < "4.2.0")
+  file <- render_grid(
+    grid::grid.rect(
+      gp = grid::gpar(fill = "blue"),
+      vp = grid::viewport(mask = grid::as.mask(grid::rectGrob(
+        gp = grid::gpar(fill = "black")))))
+  )
+  raw <- raw_pdf(file)
+  expect_gt(grepRaw("/SMask << /S /Alpha", raw, fixed = TRUE), 0)
+  expect_gt(grepRaw("/Group << /S /Transparency", raw, fixed = TRUE), 0)
+})
+
+test_that("luminance masks warn and are ignored", {
+  skip_if(getRversion() < "4.2.0")
+  skip_if_not(exists("as.mask", envir = asNamespace("grid")))
+  mask <- grid::as.mask(grid::rectGrob(gp = grid::gpar(fill = "black")),
+                        type = "luminance")
+  file <- tempfile(fileext = ".pdf")
+  portable_pdf(file)
+  grid::grid.newpage()
+  expect_warning(
+    grid::grid.rect(gp = grid::gpar(fill = "blue"),
+                    vp = grid::viewport(mask = mask)),
+    "luminance"
+  )
+  dev.off()
+})
+
+test_that("groups become transparency group form XObjects with blend modes", {
+  skip_if(getRversion() < "4.2.0")
+  file <- render_grid(
+    grid::grid.group(
+      grid::circleGrob(x = 0.4, r = 0.2,
+                       gp = grid::gpar(fill = "red", col = NA)),
+      op = "multiply",
+      dst = grid::circleGrob(x = 0.6, r = 0.2,
+                             gp = grid::gpar(fill = "green", col = NA)))
+  )
+  raw <- raw_pdf(file)
+  expect_gt(grepRaw("/Subtype /Form", raw, fixed = TRUE), 0)
+  expect_gt(grepRaw("/BM /Multiply", raw, fixed = TRUE), 0)
+  content <- paste(pdf_streams(file), collapse = "\n")
+  expect_match(content, " Do\n", fixed = TRUE)
+})
+
+test_that("unsupported porter-duff operators warn", {
+  skip_if(getRversion() < "4.2.0")
+  file <- tempfile(fileext = ".pdf")
+  portable_pdf(file)
+  grid::grid.newpage()
+  expect_warning(
+    grid::grid.group(grid::circleGrob(r = 0.2), op = "in",
+                     dst = grid::circleGrob(x = 0.6, r = 0.2)),
+    "Porter-Duff"
+  )
+  dev.off()
+})
+
+test_that("grid.path strokes and fills work", {
+  skip_if(getRversion() < "4.2.0")
+  file <- render_grid(
+    grid::grid.path(c(0.2, 0.8, 0.5), c(0.2, 0.2, 0.8),
+                    gp = grid::gpar(fill = "grey80", col = "black"))
+  )
+  content <- paste(pdf_streams(file), collapse = "\n")
+  expect_match(content, " m\n", fixed = TRUE)
+  expect_match(content, "B\n", fixed = TRUE)
+})
+
+test_that("document metadata is written to the Info dictionary", {
+  file <- render_pdf(plot(1:10), title = "My title", author = "Jane")
+  raw <- raw_pdf(file)
+  expect_gt(grepRaw("/Title (My title)", raw, fixed = TRUE), 0)
+  expect_gt(grepRaw("/Author (Jane)", raw, fixed = TRUE), 0)
+  expect_gt(grepRaw("/Producer", raw, fixed = TRUE), 0)
+  expect_gt(grepRaw("/Info ", raw, fixed = TRUE), 0)
+})
+
+test_that("colormodel gray and cmyk affect color operators", {
+  f_gray <- render_pdf(plot(1:10, col = "red"), colormodel = "gray")
+  streams <- paste(pdf_streams(f_gray), collapse = "\n")
+  expect_false(grepl(" RG", streams, fixed = FALSE))
+  expect_match(streams, " G\n", fixed = TRUE)
+
+  f_cmyk <- render_pdf(plot(1:10, col = "red"), colormodel = "cmyk")
+  streams <- paste(pdf_streams(f_cmyk), collapse = "\n")
+  expect_match(streams, " K\n", fixed = TRUE)
+  # red in CMYK: c=0 m=1 y=1 k=0
+  expect_match(streams, "0 1 1 0 K", fixed = TRUE)
+})
+
+test_that("stroke and fill with different alphas use separate passes", {
+  file <- render_pdf({
+    plot.new()
+    plot.window(c(0, 1), c(0, 1))
+    rect(0.2, 0.2, 0.8, 0.8,
+         col = grDevices::adjustcolor("blue", 0.3),
+         border = grDevices::adjustcolor("red", 0.8))
+  })
+  content <- paste(pdf_streams(file), collapse = "\n")
+  # fill alpha and stroke alpha differ -> two paint passes of the rect
+  expect_equal(lengths(regmatches(content, gregexpr(" re\n", content,
+                                                    fixed = TRUE)))[[1]], 2)
+  # the gstate dictionaries live in the object bodies, not the streams
+  raw <- raw_pdf(file)
+  expect_gt(grepRaw("/ca 0.3", raw, fixed = TRUE), 0)  # fill alpha
+  expect_gt(grepRaw("/CA 0.8", raw, fixed = TRUE), 0)  # stroke alpha
+})
+
+test_that("grid.glyph renders glyphs from an explicit font file", {
+  skip_if(getRversion() < "4.3.0")
+  skip_if_not(exists("glyphInfo", envir = asNamespace("grid")))
+  font <- grDevices::glyphFont(systemfonts::match_fonts("sans")$path,
+                               index = 0L, family = "sans", weight = "normal",
+                               style = "normal")
+  fonts <- grDevices::glyphFontList(sans = font)
+  gid <- systemfonts::glyph_info("A", family = "sans")$index
+  file <- render_grid(
+    grid::grid.glyph(grDevices::glyphInfo(as.integer(gid), x = 0.5, y = 0.5,
+                                     font = 1L, size = 40, fontList = fonts,
+                                     width = 0.1, height = 0.1))
+  )
+  content <- paste(pdf_streams(file), collapse = "\n")
+  expect_match(content, " Tj\n", fixed = TRUE)
+  expect_gt(grepRaw("/FontFile2", raw_pdf(file), fixed = TRUE), 0)
+})
