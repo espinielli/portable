@@ -71,6 +71,18 @@ test_that("multi-stop gradients use stitching functions", {
   expect_gt(grepRaw("/FunctionType 3", raw, fixed = TRUE), 0)
 })
 
+test_that("unsorted and duplicate gradient stops are handled", {
+  skip_if(getRversion() < "4.2.0")
+  file <- render_grid(
+    grid::grid.rect(gp = grid::gpar(
+      fill = grid::linearGradient(c("red", "white", "blue", "green"),
+                                  stops = c(0, 0.8, 0.3, 0.3))))
+  )
+  raw <- raw_pdf(file)
+  # Interior bounds must be sorted and increasing after normalization
+  expect_gt(grepRaw("/Bounds [ 0.3 0.3 ]", raw, fixed = TRUE), 0)
+})
+
 test_that("tiling patterns become type 1 patterns", {
   skip_if(getRversion() < "4.2.0")
   file <- render_grid(
@@ -193,6 +205,25 @@ test_that("document metadata is written to the Info dictionary", {
   expect_gt(grepRaw("/Author (Jane)", raw, fixed = TRUE), 0)
   expect_gt(grepRaw("/Producer", raw, fixed = TRUE), 0)
   expect_gt(grepRaw("/Info ", raw, fixed = TRUE), 0)
+})
+
+test_that("special characters in metadata are escaped", {
+  file <- render_pdf(plot(1:10), title = "a (b) \\ c")
+  raw <- raw_pdf(file)
+  expect_gt(grepRaw("/Title (a \\(b\\) \\\\ c)", raw, fixed = TRUE), 0)
+})
+
+test_that("ToUnicode CMaps with many glyphs use chunked bfchar blocks", {
+  file <- render_pdf({
+    plot.new()
+    # More than 100 distinct glyphs
+    text(0.5, 0.5, intToUtf8(33:200), cex = 0.5)
+  })
+  raw <- raw_pdf(file)
+  # No block may exceed the 100-entry limit; multiple blocks are emitted
+  blocks <- grepRaw("beginbfchar", raw, all = TRUE, fixed = TRUE)
+  expect_gt(length(blocks), 1)
+  expect_gt(grepRaw("100 beginbfchar", raw, fixed = TRUE), 0)
 })
 
 test_that("colormodel gray and cmyk affect color operators", {

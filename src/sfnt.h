@@ -228,7 +228,10 @@ inline bool parse(const std::string& path, unsigned int index, Metrics& out) {
       const char* p = ct + best4;
       cmap_format4(p, u16(p + 2), cp_to_gid);
     }
-    for (auto& kv : cp_to_gid) out.cmap[kv.second] = kv.first;
+    // Invert to glyph -> codepoint; cp_to_gid iterates codepoints in
+    // ascending order so emplace keeps the smallest (canonical) one when
+    // several codepoints share a glyph
+    for (auto& kv : cp_to_gid) out.cmap.emplace(kv.second, kv.first);
   }
 
   out.ok = true;
@@ -559,10 +562,42 @@ inline std::vector<char> build_ttf(const std::vector<GlyfGlyph>& glyphs,
   for (int i = 0; i < 7; i++) be16u(maxp, 0);
   be16u(maxp, 0);  // maxComponentDepth
 
+  // Minimal OS/2 (version 0): enough structure data for strict consumers
+  std::vector<char> os2;
+  be16u(os2, 0);  // version
+  be16(os2, max_adv > 0 ? (int16_t)(max_adv / 2) : 500);  // xAvgCharWidth
+  be16u(os2, 400);  // usWeightClass
+  be16u(os2, 5);    // usWidthClass
+  be16u(os2, 0);    // fsType: installable embedding
+  for (int i = 0; i < 10; i++) be16(os2, 0);  // sub/superscript & strikeout
+  be16(os2, 0);     // sFamilyClass
+  for (int i = 0; i < 10; i++) os2.push_back(0);  // panose
+  for (int i = 0; i < 4; i++) be32(os2, 0);       // ulUnicodeRange
+  for (int i = 0; i < 4; i++) os2.push_back(0);   // achVendID
+  be16u(os2, 0x40);  // fsSelection: regular
+  be16u(os2, 0);     // usFirstCharIndex
+  be16u(os2, 0xFFFF);  // usLastCharIndex
+  be16(os2, ascent);
+  be16(os2, descent);
+  be16(os2, line_gap);
+  be16u(os2, (uint16_t)std::max(0, (int)ascent));    // usWinAscent
+  be16u(os2, (uint16_t)std::max(0, -(int)descent));  // usWinDescent
+
+  // post format 3.0: no glyph names; the FontDescriptor carries the angles
+  std::vector<char> post;
+  be32(post, 0x00030000);
+  be32(post, 0);      // italicAngle
+  be16(post, 0);      // underlinePosition
+  be16(post, 0);      // underlineThickness
+  be32(post, 0);      // isFixedPitch
+  for (int i = 0; i < 4; i++) be32(post, 0);
+
   // Table directory (sorted by tag) and final assembly
-  const char* tags[6] = {"glyf", "head", "hhea", "hmtx", "loca", "maxp"};
-  std::vector<char>* tables[6] = {&glyf, &head, &hhea, &hmtx, &loca_bytes, &maxp};
-  uint16_t count = 6, entry_selector = 2;  // floor(log2(6))
+  const char* tags[8] = {"OS/2", "glyf", "head", "hhea",
+                         "hmtx", "loca", "maxp", "post"};
+  std::vector<char>* tables[8] = {&os2,   &glyf, &head,       &hhea,
+                                  &hmtx,  &loca_bytes, &maxp, &post};
+  uint16_t count = 8, entry_selector = 3;  // floor(log2(8))
   uint16_t search_range = 16 << entry_selector;
   uint16_t range_shift = count * 16 - search_range;
 
@@ -575,7 +610,7 @@ inline std::vector<char> build_ttf(const std::vector<GlyfGlyph>& glyphs,
   size_t directory_start = out.size();
   out.resize(directory_start + count * 16, 0);
   size_t head_offset = 0;
-  for (int i = 0; i < 6; i++) {
+  for (int i = 0; i < 8; i++) {
     while (out.size() % 4 != 0) out.push_back(0);
     size_t offset = out.size();
     if (std::memcmp(tags[i], "head", 4) == 0) head_offset = offset;

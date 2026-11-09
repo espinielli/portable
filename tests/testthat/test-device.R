@@ -69,4 +69,8 @@ test_that("the background colour fills the page", {
 test_that("invalid dimensions are rejected", {
   expect_error(portable_pdf(tempfile(fileext = ".pdf"), width = 0))
   expect_error(portable_pdf(tempfile(fileext = ".pdf"), scaling = -1))
+  expect_error(portable_pdf(tempfile(fileext = ".pdf"), width = NA))
+  expect_error(portable_pdf(tempfile(fileext = ".pdf"), height = NaN))
+  expect_error(portable_pdf(tempfile(fileext = ".pdf"), width = 1:2))
+  expect_error(portable_pdf(tempfile(fileext = ".pdf"), family = c("a", "b")))
 })

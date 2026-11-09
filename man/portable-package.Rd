@@ -8,6 +8,14 @@
 \description{
 A PDF graphics device that uses systemfonts and textshaping for font lookup and text layout (the same font stack as the ragg devices) and embeds all used fonts so documents render identically everywhere.
 }
+\seealso{
+Useful links:
+\itemize{
+  \item \url{https://github.com/r-lib/portable}
+  \item Report bugs at \url{https://github.com/r-lib/portable/issues}
+}
+
+}
 \author{
 \strong{Maintainer}: Thomas Lin Pedersen \email{thomasp85@gmail.com} (\href{https://orcid.org/0000-0002-5147-4711}{ORCID})
 

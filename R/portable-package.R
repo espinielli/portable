@@ -2,6 +2,7 @@
 "_PACKAGE"
 
 ## usethis namespace: start
+#' @import rlang
 #' @useDynLib portable, .registration = TRUE
 #' @importFrom systemfonts match_fonts
 #' @importFrom textshaping shape_text

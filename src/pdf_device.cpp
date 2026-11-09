@@ -48,7 +48,9 @@ void PortablePdfDevice::close() {
     doc.beginPage(page_width / (72.0 * scale), page_height / (72.0 * scale));
     doc.endPage();
   }
-  doc.finish();
+  if (!doc.finish()) {
+    Rf_warning("failed to write the PDF file");
+  }
 }
 
 void PortablePdfDevice::clip(double x0, double x1, double y0, double y1) {

@@ -31,15 +31,20 @@ portable_pdf <- function(file = "portable.pdf", width = 7, height = 7,
                          scaling = 1, pointsize = 12, family = "sans",
                          bg = "white", title = "", author = "",
                          colormodel = c("rgb", "gray", "cmyk")) {
-  colormodel <- match.arg(colormodel)
-  if (identical(bg, "transparent")) {
-    bg_rgba <- c(255L, 255L, 255L, 0L)
-  } else {
-    bg_col <- grDevices::col2rgb(bg, alpha = TRUE)
-    bg_rgba <- as.integer(bg_col[, 1])
-  }
-  invisible(.Call("C_portable_pdf", path.expand(file), as.double(width),
+  colormodel <- arg_match(colormodel)
+  check_string(file)
+  check_number_decimal(width, min = 0, allow_infinite = FALSE)
+  check_number_decimal(height, min = 0, allow_infinite = FALSE)
+  check_number_decimal(scaling, min = 0, allow_infinite = FALSE)
+  check_number_decimal(pointsize, min = 0, allow_infinite = FALSE)
+  check_string(family)
+  check_string(title)
+  check_string(author)
+  file <- path.expand(file)
+  bg_col <- grDevices::col2rgb(bg, alpha = TRUE)
+  bg_rgba <- as.integer(bg_col[, 1])
+  invisible(.Call("C_portable_pdf", file, as.double(width),
                   as.double(height), as.double(scaling), as.double(pointsize),
-                  as.character(family)[1], bg_rgba, as.character(title)[1],
-                  as.character(author)[1], colormodel, PACKAGE = "portable"))
+                  family, bg_rgba, title, author, colormodel,
+                  PACKAGE = "portable"))
 }

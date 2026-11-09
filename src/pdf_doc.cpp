@@ -7,6 +7,7 @@
 #include <systemfonts.h>
 #include <zlib.h>
 
+#include <algorithm>
 #include <cctype>
 #include <cmath>
 #include <cstdio>
@@ -207,13 +208,22 @@ int PdfFont::writeObjects(PdfDoc& doc) {
     for (size_t i = 0; i < n_glyphs; i++) {
       if (!sub[i].text.empty()) n++;
     }
-    cmap << n << " beginbfchar\n";
-    for (size_t i = 0; i < n_glyphs; i++) {
-      if (sub[i].text.empty()) continue;
-      cmap << "<" << pdf_hex16((uint32_t)i) << "> <"
-           << utf8_to_utf16be_hex(sub[i].text) << ">\n";
+    // bfchar blocks are limited to 100 entries by the spec
+    size_t emitted = 0;
+    size_t gi = 0;
+    while (emitted < n) {
+      size_t block = std::min(n - emitted, (size_t)100);
+      cmap << block << " beginbfchar\n";
+      for (size_t j = 0; j < block; gi++) {
+        if (sub[gi].text.empty()) continue;
+        cmap << "<" << pdf_hex16((uint32_t)gi) << "> <"
+             << utf8_to_utf16be_hex(sub[gi].text) << ">\n";
+        j++;
+      }
+      cmap << "endbfchar\n";
+      emitted += block;
     }
-    cmap << "endbfchar\nendcmap\nCMapName currentdict /CMap defineresource "
+    cmap << "endcmap\nCMapName currentdict /CMap defineresource "
             "pop\nend\nend\n";
     doc.addStreamObject(touni_obj, "", cmap.str(), false);
   }
@@ -335,10 +345,30 @@ std::string PdfDoc::addForm(const std::string& stream, bool gray_group,
   return name;
 }
 
-int PdfDoc::addStitchingFunction(const std::vector<double>& stops,
-                                 const std::vector<unsigned int>& cols,
+int PdfDoc::addStitchingFunction(const std::vector<double>& stops_in,
+                                 const std::vector<unsigned int>& cols_in,
                                  bool gray) {
-  size_t n = stops.size();
+  size_t n = stops_in.size();
+  // A degenerate gradient collapses to a flat fill at its single color
+  if (n == 1) return addStitchingFunction({0.0, 1.0}, {cols_in[0], cols_in[0]},
+                                          gray);
+
+  // grid permits unsorted and duplicate stops; the stitching function
+  // requires sorted stops with strictly increasing interior bounds
+  std::vector<size_t> order(n);
+  for (size_t i = 0; i < n; i++) order[i] = i;
+  std::sort(order.begin(), order.end(),
+            [&](size_t a, size_t b) { return stops_in[a] < stops_in[b]; });
+  std::vector<double> stops(n);
+  std::vector<unsigned int> cols(n);
+  for (size_t i = 0; i < n; i++) {
+    stops[i] = stops_in[order[i]];
+    cols[i] = cols_in[order[i]];
+  }
+  for (size_t i = 1; i + 1 < n; i++) {
+    if (stops[i] <= stops[i - 1]) stops[i] = std::nextafter(stops[i - 1], 1.0);
+  }
+
   std::vector<int> fn_objs;
   for (size_t i = 0; i + 1 < n; i++) {
     int obj = newObject();
@@ -675,7 +705,16 @@ bool PdfDoc::finish() {
       for (unsigned char c : utf8) {
         if (c < 32 || c > 126) ascii = false;
       }
-      if (ascii) return "(" + utf8 + ")";
+      if (ascii) {
+        // Literal strings need parens and backslashes escaped
+        std::string esc;
+        esc.reserve(utf8.size());
+        for (char c : utf8) {
+          if (c == '(' || c == ')' || c == '\\') esc += '\\';
+          esc += c;
+        }
+        return "(" + esc + ")";
+      }
       return "<FEFF" + utf8_to_utf16be_hex(utf8) + ">";
     };
     info << "<< /Producer (portable R package)";
