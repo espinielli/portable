@@ -20,7 +20,7 @@ test_that("dev.capabilities advertises the supported features", {
   expect_true(all(c("LinearGradient", "RadialGradient", "TilingPattern") %in%
                   cap$patterns))
   expect_true(cap$clippingPaths)
-  expect_equal(cap$masks, "alpha")
+  expect_equal(cap$masks, c("alpha", "luminance"))
   expect_true(all(c("over", "multiply", "screen") %in% cap$compositing))
   expect_true(cap$transformations)
   expect_true(cap$paths)
@@ -124,20 +124,17 @@ test_that("alpha masks become soft mask gstates", {
   expect_gt(grepRaw("/Group << /S /Transparency", raw, fixed = TRUE), 0)
 })
 
-test_that("luminance masks warn and are ignored", {
+test_that("luminance masks become luminosity soft masks", {
   skip_if(getRversion() < "4.2.0")
   skip_if_not(exists("as.mask", envir = asNamespace("grid")))
   mask <- grid::as.mask(grid::rectGrob(gp = grid::gpar(fill = "black")),
                         type = "luminance")
-  file <- tempfile(fileext = ".pdf")
-  portable_pdf(file)
-  grid::grid.newpage()
-  expect_warning(
+  file <- render_grid(
     grid::grid.rect(gp = grid::gpar(fill = "blue"),
-                    vp = grid::viewport(mask = mask)),
-    "luminance"
-  )
-  dev.off()
+                    vp = grid::viewport(mask = mask)))
+  raw <- raw_pdf(file)
+  expect_gt(grepRaw("/SMask << /S /Luminosity", raw, fixed = TRUE), 0)
+  expect_gt(grepRaw("/Group << /S /Transparency", raw, fixed = TRUE), 0)
 })
 
 test_that("groups become transparency group form XObjects with blend modes", {

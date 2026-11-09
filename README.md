@@ -29,8 +29,8 @@ allow it. As an example:
   combinations of alpha blending (except `"add"` and `"saturate"`). The
   `grDevices::pdf()` device achieves this through rasterization which is
   counter to the purpose of PDF.
-- It does not support luminance masking as this does not exist in the
-  PDF spec and cannot be achieved while retaining vector graphics.
+- It does not support device capture because it is not a rasterizing
+  device.
 
 ## Installation
 

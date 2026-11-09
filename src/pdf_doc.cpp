@@ -510,18 +510,105 @@ void PdfDoc::setInfo(const std::string& title, const std::string& author,
   info_creator = creator;
 }
 
+// PNG predictor (optimum, /Predictor 15): pick the per-row filter (None,
+// Sub, or Up) that minimises the sum of absolute filtered bytes, then
+// prefix each row with its filter byte
+static std::string png_predict_encode(const std::string& data, int row_bytes,
+                                      int height, int bpp) {
+  std::string out;
+  out.reserve(data.size() + height);
+  std::string sub(row_bytes, '\0'), up(row_bytes, '\0');
+  for (int y = 0; y < height; y++) {
+    const unsigned char* cur =
+        (const unsigned char*)data.data() + size_t(y) * row_bytes;
+    const unsigned char* prev = y > 0 ? cur - row_bytes : nullptr;
+    long score_none = 0, score_sub = 0, score_up = 0;
+    for (int x = 0; x < row_bytes; x++) {
+      unsigned char left = x >= bpp ? cur[x - bpp] : 0;
+      unsigned char above = prev ? prev[x] : 0;
+      sub[x] = (unsigned char)(cur[x] - left);
+      up[x] = (unsigned char)(cur[x] - above);
+      score_none += std::abs((signed char)cur[x]);
+      score_sub += std::abs((signed char)sub[x]);
+      score_up += std::abs((signed char)up[x]);
+    }
+    if (score_none <= score_sub && score_none <= score_up) {
+      out += '\0';
+      out.append((const char*)cur, row_bytes);
+    } else if (score_sub <= score_up) {
+      out += '\1';
+      out += sub;
+    } else {
+      out += '\2';
+      out += up;
+    }
+  }
+  return out;
+}
+
 std::string PdfDoc::addImage(int width, int height, const unsigned char* rgba,
-                             bool interpolate) {
-  // Split into RGB and alpha planes
+                             bool interpolate, ImageColor color) {
   size_t n = size_t(width) * height;
-  std::string rgb, alpha;
-  rgb.reserve(n * 3);
+
+  // Decide the colour plane: forced conversion, or RGB with a fall-back to
+  // gray when no pixel carries chroma
+  int channels = 3;
+  const char* colorspace = "/DeviceRGB";
+  if (color == ImageColor::kGray) {
+    channels = 1;
+    colorspace = "/DeviceGray";
+  } else if (color == ImageColor::kCMYK) {
+    channels = 4;
+    colorspace = "/DeviceCMYK";
+  } else {
+    bool all_gray = true;
+    for (size_t i = 0; i < n; i++) {
+      if (rgba[i * 4] != rgba[i * 4 + 1] || rgba[i * 4] != rgba[i * 4 + 2]) {
+        all_gray = false;
+        break;
+      }
+    }
+    if (all_gray) {
+      channels = 1;
+      colorspace = "/DeviceGray";
+    }
+  }
+
+  // Split into colour and alpha planes, converting the colour as needed
+  std::string plane, alpha;
+  plane.reserve(n * channels);
   alpha.reserve(n);
   bool has_alpha = false;
   for (size_t i = 0; i < n; i++) {
-    rgb += rgba[i * 4 + 0];
-    rgb += rgba[i * 4 + 1];
-    rgb += rgba[i * 4 + 2];
+    double r = rgba[i * 4 + 0] / 255.0, g = rgba[i * 4 + 1] / 255.0,
+           b = rgba[i * 4 + 2] / 255.0;
+    switch (channels) {
+      case 1:
+        if (color == ImageColor::kAuto) {
+          plane += rgba[i * 4];
+        } else {
+          plane += (char)std::lround(
+              255.0 * (0.2126 * r + 0.7152 * g + 0.0722 * b));
+        }
+        break;
+      case 4: {
+        // Same naive RGB->CMYK as the vector colour operators
+        double k = 1.0 - std::max(r, std::max(g, b));
+        double d = 1.0 - k;
+        double c = d > 0 ? (d - r) / d : 0.0;
+        double m = d > 0 ? (d - g) / d : 0.0;
+        double y = d > 0 ? (d - b) / d : 0.0;
+        plane += (char)std::lround(255.0 * c);
+        plane += (char)std::lround(255.0 * m);
+        plane += (char)std::lround(255.0 * y);
+        plane += (char)std::lround(255.0 * k);
+        break;
+      }
+      default:
+        plane += rgba[i * 4 + 0];
+        plane += rgba[i * 4 + 1];
+        plane += rgba[i * 4 + 2];
+    }
     alpha += rgba[i * 4 + 3];
     if (rgba[i * 4 + 3] != 255) has_alpha = true;
   }
@@ -531,17 +618,25 @@ std::string PdfDoc::addImage(int width, int height, const unsigned char* rgba,
     smask_obj = newObject();
     std::ostringstream dict;
     dict << "/Type /XObject /Subtype /Image /Width " << width << " /Height "
-         << height << " /ColorSpace /DeviceGray /BitsPerComponent 8";
-    addStreamObject(smask_obj, dict.str(), alpha, true);
+         << height << " /ColorSpace /DeviceGray /BitsPerComponent 8"
+         << " /DecodeParms << /Predictor 15 /Colors 1 /BitsPerComponent 8"
+         << " /Columns " << width << " >>";
+    addStreamObject(smask_obj, dict.str(),
+                    png_predict_encode(alpha, width, height, 1), true);
   }
 
   int img_obj = newObject();
   std::ostringstream dict;
   dict << "/Type /XObject /Subtype /Image /Width " << width << " /Height "
-       << height << " /ColorSpace /DeviceRGB /BitsPerComponent 8";
+       << height << " /ColorSpace " << colorspace << " /BitsPerComponent 8"
+       << " /DecodeParms << /Predictor 15 /Colors " << channels
+       << " /BitsPerComponent 8 /Columns " << width << " >>";
   if (interpolate) dict << " /Interpolate true";
   if (smask_obj) dict << " /SMask " << smask_obj << " 0 R";
-  addStreamObject(img_obj, dict.str(), rgb, true);
+  addStreamObject(img_obj, dict.str(),
+                  png_predict_encode(plane, width * channels, height,
+                                     channels),
+                  true);
 
   std::string name = "Im" + std::to_string(++image_counter);
   image_objs.emplace_back(name, img_obj);

@@ -158,8 +158,9 @@ static SEXP portable_capabilities(SEXP cap) {
   SET_VECTOR_ELT(cap, R_GE_capability_clippingPaths, x);
   UNPROTECT(1);
 
-  PROTECT(x = Rf_allocVector(INTSXP, 1));
+  PROTECT(x = Rf_allocVector(INTSXP, 2));
   INTEGER(x)[0] = R_GE_alphaMask;
+  INTEGER(x)[1] = R_GE_luminanceMask;
   SET_VECTOR_ELT(cap, R_GE_capability_masks, x);
   UNPROTECT(1);
 

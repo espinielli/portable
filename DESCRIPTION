@@ -4,9 +4,10 @@ Version: 0.0.0.9000
 Authors@R:
     person("Thomas Lin", "Pedersen", , "thomasp85@gmail.com", role = c("aut", "cre"),
            comment = c(ORCID = "0000-0002-5147-4711"))
-Description: A PDF graphics device that uses systemfonts and textshaping for
-    font lookup and text layout (the same font stack as the ragg devices) and
-    embeds all used fonts so documents render identically everywhere.
+Description: Provides a modern PDF graphics device that uses systemfonts and
+    textshaping for font lookup and text layout (the same font stack as the ragg
+    devices) and embeds all used fonts so documents render identically
+    everywhere.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -27,5 +28,5 @@ LinkingTo:
 SystemRequirements: zlib
 URL: https://github.com/r-lib/portable
 BugReports: https://github.com/r-lib/portable/issues
-Remotes:  
+Remotes:
     r-lib/systemfonts

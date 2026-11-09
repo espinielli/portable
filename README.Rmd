@@ -25,7 +25,7 @@ Portable is a modern PDF graphics device for R, created to supplement the [ragg]
 Like it's graphics device cousins it intends to keep up to date with new capabilities in the R graphics engine to the extent that the PDF specs allow it. As an example:
 
 * It supports Porter-Duff blending operations even though these are not present in the PDF spec because they can be recreated by various combinations of alpha blending (except `"add"` and `"saturate"`). The `grDevices::pdf()` device achieves this through rasterization which is counter to the purpose of PDF.
-* It does not support luminance masking as this does not exist in the PDF spec and cannot be achieved while retaining vector graphics.
+* It does not support device capture because it is not a rasterizing device.
 
 ## Installation
 

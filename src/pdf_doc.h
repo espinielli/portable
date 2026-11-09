@@ -69,9 +69,13 @@ class PdfDoc {
   // Fonts are keyed by file + face index and shared across pages
   PdfFont* getFont(const std::string& path, unsigned int index);
 
-  // Embed an RGBA raster, returns the XObject resource name
+  // Embed an RGBA raster, returns the XObject resource name. kAuto keeps RGB
+  // but falls back to gray when all pixels are gray; kGray and kCMYK force
+  // conversion to that colour space
+  enum class ImageColor { kAuto, kGray, kCMYK };
   std::string addImage(int width, int height, const unsigned char* rgba,
-                       bool interpolate = false);
+                       bool interpolate = false,
+                       ImageColor color = ImageColor::kAuto);
 
   // Form XObject over the full page (transparency group), for groups and
   // soft masks. isolated requests /I true, so the group's alpha is computed

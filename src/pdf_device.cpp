@@ -364,7 +364,10 @@ void PortablePdfDevice::raster(const unsigned int* raster, int w, int h,
     rgba[i * 4 + 2] = R_BLUE(raster[i]);
     rgba[i * 4 + 3] = R_ALPHA(raster[i]);
   }
-  std::string name = doc.addImage(w, h, rgba.data(), interpolate);
+  PdfDoc::ImageColor img_color = PdfDoc::ImageColor::kAuto;
+  if (colormodel == ColorModel::kGray) img_color = PdfDoc::ImageColor::kGray;
+  if (colormodel == ColorModel::kCMYK) img_color = PdfDoc::ImageColor::kCMYK;
+  std::string name = doc.addImage(w, h, rgba.data(), interpolate, img_color);
 
   double rad = rot * DEG_TO_RAD;
   double c = std::cos(rad), sn = std::sin(rad);
@@ -786,18 +789,15 @@ SEXP PortablePdfDevice::setMask(SEXP mask, SEXP ref) {
     s << "/" << doc.addGState(1.0, 1.0, "", "", false, true) << " gs\n";
     return R_NilValue;
   }
-  if (R_GE_maskType(mask) == R_GE_luminanceMask) {
-    Rf_warning("luminance masks are not supported on this device");
-    current_mask = -1;
-    s << "/" << doc.addGState(1.0, 1.0, "", "", false, true) << " gs\n";
-    return R_NilValue;
-  }
+  bool luminance = R_GE_maskType(mask) == R_GE_luminanceMask;
   int index = -1;
   if (ref != R_NilValue) index = INTEGER(ref)[0];
   if (index < 0 || index >= (int)masks.size() || masks[index].empty()) {
     std::string stream = captureDrawing(mask);
+    // Luminosity masks derive alpha from the form's colour, so the form
+    // keeps its RGB transparency group (addForm's default)
     std::string form = doc.addForm(stream, false);
-    std::string gs = doc.addGState(1.0, 1.0, "", form, false);
+    std::string gs = doc.addGState(1.0, 1.0, "", form, luminance);
     for (size_t i = 0; i < masks.size(); i++) {
       if (masks[i].empty()) {
         index = (int)i;
